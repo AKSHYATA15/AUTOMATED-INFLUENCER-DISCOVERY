@@ -7,144 +7,91 @@ Original file is located at
     https://colab.research.google.com/drive/1nzRvtXmVUV5J482_syRSRv6Gch8pb9w2
 """
 
+import pandas as pd
 import streamlit as st
-import requests
-from datetime import datetime, timedelta
 
-# 👉 Your YouTube API Key
-YOUTUBE_API_KEY = "AIzaSyBzXUdI5rPsBn6DeFiJE9IWgBfQc4dvpqU"  # replace with your API key
+# App Config
+st.set_page_config(page_title="Influencer Discovery Tool", layout="wide")
 
-# App title
-st.set_page_config(page_title="YouTube Influencer Finder", layout="wide")
-st.title("🔎 YouTube Influencer Finder")
-
-# --- Styling to Match Your frontend.html ---
+# Header Section
 st.markdown("""
     <style>
-    .influencer-card {
-        background-color: #f9f9f9;
-        padding: 15px;
-        margin-bottom: 15px;
-        border-radius: 12px;
-        border: 1px solid #ddd;
-        box-shadow: 2px 2px 12px rgba(0,0,0,0.05);
-    }
-    .influencer-card img {
-        float: left;
-        margin-right: 15px;
-        border-radius: 50%;
-    }
-    .influencer-card:after {
-        content: "";
-        display: table;
-        clear: both;
-    }
+        .title {
+            font-size: 42px;
+            font-weight: bold;
+            color: #ff4b4b;
+            text-align: center;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        img.icon {
+            width: 20px;
+            vertical-align: middle;
+            margin-right: 5px;
+        }
     </style>
+    <div class="title">Influencer Discovery Tool</div>
+    <div class="subtitle">Explore top influencers across social media platforms</div>
 """, unsafe_allow_html=True)
 
-# --- User Inputs ---
-with st.sidebar:
-    st.header("📋 Filters")
-    country = st.text_input("Country", "India")
-    industry = st.text_input("Industry", "Fashion")
-    niche = st.text_input("Niche", "Streetwear")
-    sub_min = st.number_input("Minimum Subscribers", min_value=0, value=1000, step=100)
-    sub_max = st.number_input("Maximum Subscribers", min_value=0, value=100000, step=100)
-    search = st.button("🚀 Search Influencers")
+# Load data
+df = pd.read_excel("cleaned_influencer_data (1) (1).xlsx")
 
-# --- Main Search Logic ---
-def search_youtube_influencers(api_key, keyword, sub_min, sub_max, max_results=50, date_range_days=60):
-    search_url = "https://www.googleapis.com/youtube/v3/search"
-    video_url = "https://www.googleapis.com/youtube/v3/videos"
-    channel_url = "https://www.googleapis.com/youtube/v3/channels"
-    influencers = []
-    added_channel_ids = set()
+# Dropdown for Influencer Tier
+influencer_types = sorted(df['influencer_tier'].dropna().unique())
+selected_type = st.selectbox("Select Influencer Tier", influencer_types)
 
-    today = datetime.utcnow()
-    start_date = today - timedelta(days=date_range_days)
-    start_date_str = start_date.isoformat("T") + "Z"
+# Filter data
+filtered_df = df[df['influencer_tier'] == selected_type].sort_values(by='trending_score', ascending=False)
 
-    search_params = {
-        "part": "snippet",
-        "q": keyword,
-        "type": "video",
-        "maxResults": max_results,
-        "publishedAfter": start_date_str,
-        "key": api_key
-    }
+# Display influencers
+if filtered_df.empty:
+    st.warning("No influencers found for the selected tier.")
+else:
+    for _, row in filtered_df.iterrows():
+        profile_image = row['youtube_profile_image'] if pd.notna(row['youtube_profile_image']) else ''
+        name = row['youtube_name'] if pd.notna(row['youtube_name']) else row['instagram_username']
+        insta_followers = row['instagram_followers'] if pd.notna(row['instagram_followers']) else ''
+        yt_subs = row['subscribers'] if pd.notna(row['subscribers']) else ''
+        trending_score = row['trending_score'] if pd.notna(row['trending_score']) else ''
+        yt_views = row['total_views'] if pd.notna(row['total_views']) else ''
+        video_link = row['top_video_link'] if pd.notna(row['top_video_link']) else ''
+        country = row['country'] if pd.notna(row['country']) else ''
+        insta_link = row['instagram_profile_link'] if pd.notna(row['instagram_profile_link']) else '#'
+        yt_link = row['youtube_profile_link'] if pd.notna(row['youtube_profile_link']) else '#'
+        industry = row['industry'] if pd.notna(row['industry']) else 'N/A'
+        niche = row['niche'] if pd.notna(row['niche']) else 'N/A'
 
-    search_resp = requests.get(search_url, params=search_params).json()
-    video_ids = [item["id"]["videoId"] for item in search_resp.get("items", [])]
-
-    for video_id in video_ids:
-        video_params = {
-            "part": "snippet,statistics",
-            "id": video_id,
-            "key": api_key
-        }
-        video_resp = requests.get(video_url, params=video_params).json()
-        if not video_resp.get("items"):
-            continue
-
-        video = video_resp["items"][0]
-        views = int(video["statistics"].get("viewCount", 0))
-        title = video["snippet"]["title"]
-        channel_id = video["snippet"]["channelId"]
-        channel_title = video["snippet"]["channelTitle"]
-
-        if channel_id in added_channel_ids:
-            continue
-
-        channel_params = {
-            "part": "snippet,statistics",
-            "id": channel_id,
-            "key": api_key
-        }
-        channel_resp = requests.get(channel_url, params=channel_params).json()
-        if not channel_resp.get("items"):
-            continue
-
-        channel = channel_resp["items"][0]
-        subs = int(channel["statistics"].get("subscriberCount", 0))
-        total_views = int(channel["statistics"].get("viewCount", 0))
-        profile_pic = channel["snippet"]["thumbnails"]["default"]["url"]
-        trending_score = (views * 0.7) + (subs * 0.3)
-
-        if sub_min <= subs <= sub_max:
-            influencers.append({
-                "name": channel_title,
-                "profile_link": f"https://www.youtube.com/channel/{channel_id}",
-                "subscribers": subs,
-                "total_views": total_views,
-                "top_video_title": title,
-                "top_video_views": views,
-                "top_video_link": f"https://www.youtube.com/watch?v={video_id}",
-                "profile_pic": profile_pic,
-                "trending_score": trending_score
-            })
-            added_channel_ids.add(channel_id)
-
-    return influencers
-
-# --- Run the Search ---
-if search:
-    with st.spinner("Searching for influencers..."):
-        keyword = f"{country} {industry} {niche}"
-        results = search_youtube_influencers(YOUTUBE_API_KEY, keyword, sub_min, sub_max)
-
-        if results:
-            for inf in results:
-                st.markdown(f"""
-                    <div class="influencer-card">
-                        <img src="{inf['profile_pic']}" width="60">
-                        <strong>{inf['name']}</strong><br>
-                        <a href="{inf['profile_link']}" target="_blank">YouTube Profile</a><br>
-                        📺 Subscribers: {inf['subscribers']}<br>
-                        👁️ Total Views: {inf['total_views']}<br>
-                        🔥 Trending Score: {int(inf['trending_score'])}<br>
-                        🎬 <a href="{inf['top_video_link']}" target="_blank">{inf['top_video_title']}</a><br>
-                        📈 Top Video Views: {inf['top_video_views']}
-                    </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.warning("No influencers found in that range. Try adjusting the filters!")
+        st.markdown(f"""
+        <div class="card">
+            <div style="display: flex; align-items: center;">
+                <div style="margin-right: 20px;">
+                    <img src="{profile_image}" width="100" style="border-radius: 10px;">
+                </div>
+                <div>
+                    <h4>{name}</h4>
+                    <p><b>Industry:</b> {industry}</p>
+                    <p><b>Niche:</b> {niche}</p>
+                    <p><img class="icon" src="https://cdn-icons-png.flaticon.com/512/2111/2111463.png"> <b>Instagram Followers:</b> {insta_followers}</p>
+                    <p><img class="icon" src="https://cdn-icons-png.flaticon.com/512/1384/1384060.png"> <b>YouTube Subscribers:</b> {yt_subs}</p>
+                    <p><b>Trending Score:</b> {trending_score}</p>
+                    <p><b>Total YouTube Views:</b> {yt_views}</p>
+                    <p><b>Top YouTube Video:</b> <a href="{video_link}" target="_blank">Watch</a></p>
+                    <p><b>Country:</b> {country}</p>
+                    <p><a href="{insta_link}" target="_blank">Instagram</a> | <a href="{yt_link}" target="_blank">YouTube</a></p>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
