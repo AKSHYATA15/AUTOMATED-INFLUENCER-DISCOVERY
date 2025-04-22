@@ -42,7 +42,9 @@ st.markdown("""
             margin-right: 5px;
         }
     </style>
+    <div class="title">HYPEBOT</div> 
     <div class="title">Influencer Discovery Tool</div>
+    
     <div class="subtitle">Explore top influencers across social media platforms</div>
 """, unsafe_allow_html=True)
 
